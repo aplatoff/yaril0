@@ -20,7 +20,11 @@ pub const ValueKind = enum(u4) {
     get_word,
 };
 
-pub const ValueType = struct { kind: ValueKind, typ: type };
+pub const ValueType = struct {
+    kind: ValueKind,
+    typ: type,
+    toString: fn(value: Value) [],
+};
 
 pub const Integer = ValueType{
     .kind = .integer,
