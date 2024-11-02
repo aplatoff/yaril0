@@ -4,50 +4,15 @@ const val = @import("value.zig");
 
 const Allocator = std.mem.Allocator;
 
-const Value = val.Value;
 const ValueKind = val.ValueKind;
-const ValueType = val.ValueType;
-const HeapPointer = val.HeapPointer;
 const ValueError = val.ValueError;
+const Type = val.Type;
 
-pub const ObjectType = enum(u2) {
-    array,
-    block,
-    mut_array,
-    mut_block,
-};
-
-pub const HeapObject = packed struct {
-    object_type: ObjectType, // 2 bits
-    _padding: u30,
-};
-
-pub const Array = packed struct {
-    object_type: ObjectType, // 2 bits
-    typ: ValueKind, // 4 bits
-    len: u10,
-
-    pub inline fn allocate(heap: *Heap, comptime T: ValueType, size: usize) ValueError![]T.typ {
-        const Item = T.typ;
-        const Offset = if (@sizeOf(Item) > @sizeOf(Array)) Item else Array;
-        const array_size = size * @sizeOf(Item);
-        const header_size = @sizeOf(Offset);
-        const slot = try heap.allocate(array_size + header_size);
-        const array = heap.as(Array, slot);
-        array.object_type = ObjectType.array;
-        array.typ = T.kind;
-        array.len = @intCast(size);
-        const offsets: [*]Offset = @alignCast(@ptrCast(array));
-        const ptr: [*]Item = @ptrCast(&offsets[1]);
-        return ptr[0..size];
-    }
-};
+const HeapPointer = u32;
+pub const Array = Type(1, HeapPointer);
 
 pub const Heap = struct {
-    const Slot = packed union {
-        header: HeapObject,
-        free_block: HeapPointer,
-    };
+    const Slot = HeapPointer;
 
     const SIZE_CLASSES = [_]usize{ 8, 12, 16, 24, 32, 64, 128, 256, 512, 1024 };
     const NUM_SIZE_CLASSES = SIZE_CLASSES.len;
@@ -88,16 +53,12 @@ pub const Heap = struct {
         allocator.free(self.memory);
     }
 
-    pub inline fn as(self: *Heap, comptime T: type, ptr: HeapPointer) *T {
-        return @ptrCast(&self.memory[ptr]);
-    }
-
-    pub inline fn allocate(self: *Heap, size: usize) !HeapPointer {
+    inline fn allocateSize(self: *Heap, size: usize) !HeapPointer {
         const size_class = getSizeClass(size);
         if (size_class == NUM_SIZE_CLASSES) return ValueError.OutOfMemory;
         const free_slot = self.free_lists[size_class];
         if (free_slot != 0) {
-            self.free_lists[size_class] = self.memory[free_slot].free_block;
+            self.free_lists[size_class] = self.memory[free_slot];
             return free_slot;
         } else {
             const slot = self.next;
@@ -106,8 +67,49 @@ pub const Heap = struct {
             return @intCast(slot);
         }
     }
-};
 
-test "sizes" {
-    try std.testing.expectEqual(4, @sizeOf(Heap.Slot));
-}
+    const Array2 = packed struct { kind: ValueKind, len: u8 };
+    const Array4 = packed struct { kind: ValueKind, len: u8, extra: u16 };
+
+    pub inline fn allocate(self: *Heap, comptime T: type, values: []const T.Type) ValueError!Array {
+        const Item = T.Type;
+        const size = values.len;
+        const array_size = size * @sizeOf(Item);
+
+        const Header = if (size < 0x80) Array2 else Array4;
+        const padding = @max(0, @alignOf(Item) - @sizeOf(Header));
+        const header_size = @sizeOf(Header) + padding;
+        comptime {
+            std.debug.assert(@mod(header_size, @sizeOf(Item)) == 0);
+        }
+        const slot = try self.allocateSize(header_size + array_size);
+        const header: *Header = @ptrCast(&self.memory[slot]);
+        header.kind = T.Kind;
+        if (size < 0x80) {
+            header.len = @intCast(size);
+        } else {
+            const hi: u8 = @intCast(size >> 16);
+            header.len = hi | 0x80;
+            header.extra = @intCast(size);
+        }
+        const items: [*]Item = @ptrCast(&self.memory[slot]);
+        const offset = header_size / @sizeOf(Item);
+        @memcpy(items[offset..], values);
+        return Array.init(slot);
+    }
+
+    pub inline fn open(self: *Heap, comptime T: type, array: Array) []const T.Type {
+        const Item = T.Type;
+        const slot = array.val();
+        const header: *Array2 = @ptrCast(&self.memory[slot]);
+        if (header.len & 0x80 == 0) {
+            const padding = @max(0, @alignOf(Item) - @sizeOf(Array2));
+            const header_size = @sizeOf(Array2) + padding;
+            const offset = header_size / @sizeOf(Item);
+            const items: [*]Item = @ptrCast(&self.memory[slot]);
+            return items[offset .. offset + header.len];
+        } else {
+            @panic("not implemented");
+        }
+    }
+};
