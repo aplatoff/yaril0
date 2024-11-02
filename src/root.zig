@@ -12,8 +12,6 @@ pub fn Type(comptime kind: ValueKind, comptime T: type) type {
     return packed struct {
         const Kind = kind;
         const Type = T;
-        const Size = @sizeOf(T);
-
         const Self = @This();
 
         value: T,
