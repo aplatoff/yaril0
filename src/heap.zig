@@ -27,20 +27,24 @@ pub const Array = packed struct {
     typ: ValueKind, // 4 bits
     len: u10,
 
-    pub fn allocate(heap: *Heap, comptime T: ValueType, comptime size: usize) !HeapPointer {
-        const array_size = size * T.size;
-        const full_size = @sizeOf(Array) + array_size;
-        const ptr = try heap.allocate(full_size);
-        const array = heap.as(Array, ptr);
+    pub inline fn allocate(heap: *Heap, comptime T: ValueType, size: usize) ValueError![]T.typ {
+        const Item = T.typ;
+        const Offset = if (@sizeOf(Item) > @sizeOf(Array)) Item else Array;
+        const array_size = size * @sizeOf(Item);
+        const header_size = @sizeOf(Offset);
+        const slot = try heap.allocate(array_size + header_size);
+        const array = heap.as(Array, slot);
         array.object_type = ObjectType.array;
         array.typ = T.kind;
-        array.len = size;
-        return ptr;
+        array.len = @intCast(size);
+        const offsets: [*]Offset = @alignCast(@ptrCast(array));
+        const ptr: [*]Item = @ptrCast(&offsets[1]);
+        return ptr[0..size];
     }
 };
 
 pub const Heap = struct {
-    const Slot = union {
+    const Slot = packed union {
         header: HeapObject,
         free_block: HeapPointer,
     };
@@ -58,7 +62,7 @@ pub const Heap = struct {
 
     const SIZE_SLOTS = slotSizes(&SIZE_CLASSES);
 
-    fn getSizeClass(comptime size: usize) usize {
+    inline fn getSizeClass(size: usize) usize {
         for (SIZE_CLASSES, 0..) |class_size, index| {
             if (size <= class_size) return index;
         }
@@ -84,17 +88,16 @@ pub const Heap = struct {
         allocator.free(self.memory);
     }
 
-    pub fn as(self: *Heap, comptime T: type, ptr: HeapPointer) *T {
+    pub inline fn as(self: *Heap, comptime T: type, ptr: HeapPointer) *T {
         return @ptrCast(&self.memory[ptr]);
     }
 
-    pub fn allocate(self: *Heap, comptime size: usize) !HeapPointer {
+    pub inline fn allocate(self: *Heap, size: usize) !HeapPointer {
         const size_class = getSizeClass(size);
         if (size_class == NUM_SIZE_CLASSES) return ValueError.OutOfMemory;
         const free_slot = self.free_lists[size_class];
         if (free_slot != 0) {
-            const slot = &self.memory[free_slot];
-            self.free_lists[size_class] = slot.free_block;
+            self.free_lists[size_class] = self.memory[free_slot].free_block;
             return free_slot;
         } else {
             const slot = self.next;
@@ -104,3 +107,7 @@ pub const Heap = struct {
         }
     }
 };
+
+test "sizes" {
+    try std.testing.expectEqual(4, @sizeOf(Heap.Slot));
+}

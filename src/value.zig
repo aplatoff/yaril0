@@ -1,4 +1,5 @@
 //
+// const std = @import("std");
 
 pub const ValueError = error{ TypeMismatch, InvalidValue, OutOfMemory };
 
@@ -19,31 +20,35 @@ pub const ValueKind = enum(u4) {
     get_word,
 };
 
-pub const ValueType = struct {
-    kind: ValueKind,
-    size: usize,
+pub const ValueType = struct { kind: ValueKind, typ: type };
+
+pub const Integer = ValueType{
+    .kind = .integer,
+    .typ = i32,
 };
 
-pub const IntegerType = ValueType{
-    .kind = .integer,
-    .size = 4,
+pub const Byte = ValueType{
+    .kind = .byte,
+    .typ = u8,
+};
+
+const AnyValue = packed union {
+    heap_object: HeapPointer,
+    byte: u8,
+    integer: i32,
+    float: f32,
+    boolean: bool,
+    char: u21,
+    word: Symbol,
+    quote: Symbol,
+    set_word: Symbol,
+    get_word: Symbol,
 };
 
 // Main value type as packed struct containing tag and data
 pub const Value = packed struct {
-    data: packed union {
-        heap_object: HeapPointer,
-        byte: u8,
-        integer: i32,
-        float: f32,
-        boolean: bool,
-        char: u21,
-        word: Symbol,
-        quote: Symbol,
-        set_word: Symbol,
-        get_word: Symbol,
-    },
     type: ValueKind,
+    data: AnyValue,
 
     pub fn initInteger(value: i32) Value {
         return .{

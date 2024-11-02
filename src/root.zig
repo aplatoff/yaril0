@@ -3,6 +3,7 @@ const testing = std.testing;
 
 pub const value = @import("value.zig");
 pub const heap = @import("heap.zig");
+pub const parser = @import("parser.zig");
 
 test "basic values" {
     try testing.expectEqual(8, @sizeOf(value.Value));
@@ -21,6 +22,8 @@ test "heap values" {
     const a1 = try theap.allocate(100);
     try testing.expectEqual(1, a1);
 
-    const arr = try heap.Array.allocate(&theap, value.IntegerType, 10);
+    const arr = try heap.Array.allocate(&theap, value.Integer, 10);
     std.debug.print("arr: {d}\n", .{arr});
+
+    try parser.Parser.parse(&theap, " \"hello\" ");
 }
