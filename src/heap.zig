@@ -76,26 +76,41 @@ pub const Heap = struct {
         const size = values.len;
         const array_size = size * @sizeOf(Item);
 
-        const Header = if (size < 0x80) Array2 else Array4;
-        const padding = @max(0, @alignOf(Item) - @sizeOf(Header));
-        const header_size = @sizeOf(Header) + padding;
-        comptime {
-            std.debug.assert(@mod(header_size, @sizeOf(Item)) == 0);
-        }
-        const slot = try self.allocateSize(header_size + array_size);
-        const header: *Header = @ptrCast(&self.memory[slot]);
-        header.kind = T.Kind;
         if (size < 0x80) {
+            const header_size = @sizeOf(Array2);
+            const padding = @max(0, @alignOf(Item) - header_size);
+            const offset = header_size + padding;
+            comptime {
+                std.debug.assert(@mod(offset, @sizeOf(Item)) == 0);
+            }
+            const slot = try self.allocateSize(offset + array_size);
+
+            const header: *Array2 = @ptrCast(&self.memory[slot]);
+            header.kind = T.Kind;
             header.len = @intCast(size);
+
+            const items: [*]Item = @ptrCast(&self.memory[slot]);
+            @memcpy(items[offset / @sizeOf(Item) ..], values);
+            return Array.init(slot);
         } else {
+            const header_size = @sizeOf(Array4);
+            const padding = @max(0, @alignOf(Item) - header_size);
+            const offset = header_size + padding;
+            comptime {
+                std.debug.assert(@mod(header_size + padding, @sizeOf(Item)) == 0);
+            }
+            const slot = try self.allocateSize(offset + array_size);
+
+            const header: *Array4 = @ptrCast(&self.memory[slot]);
             const hi: u8 = @intCast(size >> 16);
+            header.kind = T.Kind;
             header.len = hi | 0x80;
             header.extra = @intCast(size);
+
+            const items: [*]Item = @ptrCast(&self.memory[slot]);
+            @memcpy(items[offset / @sizeOf(Item) ..], values);
+            return Array.init(slot);
         }
-        const items: [*]Item = @ptrCast(&self.memory[slot]);
-        const offset = header_size / @sizeOf(Item);
-        @memcpy(items[offset..], values);
-        return Array.init(slot);
     }
 
     pub inline fn open(self: *Heap, comptime T: type, array: Array) []const T.Type {
