@@ -53,7 +53,11 @@ pub const Heap = struct {
         allocator.free(self.memory);
     }
 
-    inline fn allocateSize(self: *Heap, size: usize) !HeapPointer {
+    pub inline fn slotPtr(self: *Heap, slot: HeapPointer) *Slot {
+        return &self.memory[slot];
+    }
+
+    pub inline fn allocate(self: *Heap, size: usize) !HeapPointer {
         const size_class = getSizeClass(size);
         if (size_class == NUM_SIZE_CLASSES) return ValueError.OutOfMemory;
         const free_slot = self.free_lists[size_class];
@@ -65,66 +69,6 @@ pub const Heap = struct {
             self.next += SIZE_SLOTS[size_class];
             if (self.next >= self.memory.len) return ValueError.OutOfMemory;
             return @intCast(slot);
-        }
-    }
-
-    const Array2 = packed struct { kind: ValueKind, len: u8 };
-    const Array4 = packed struct { kind: ValueKind, len: u8, extra: u16 };
-
-    pub inline fn allocate(self: *Heap, comptime T: type, values: []const T.Type) ValueError!Array {
-        const Item = T.Type;
-        const size = values.len;
-        const array_size = size * @sizeOf(Item);
-
-        if (size < 0x80) {
-            const header_size = @sizeOf(Array2);
-            const padding = @max(0, @alignOf(Item) - header_size);
-            const offset = header_size + padding;
-            comptime {
-                std.debug.assert(@mod(offset, @sizeOf(Item)) == 0);
-            }
-            const slot = try self.allocateSize(offset + array_size);
-
-            const header: *Array2 = @ptrCast(&self.memory[slot]);
-            header.kind = T.Kind;
-            header.len = @intCast(size);
-
-            const items: [*]Item = @ptrCast(&self.memory[slot]);
-            @memcpy(items[offset / @sizeOf(Item) ..], values);
-            return Array.init(slot);
-        } else {
-            const header_size = @sizeOf(Array4);
-            const padding = @max(0, @alignOf(Item) - header_size);
-            const offset = header_size + padding;
-            comptime {
-                std.debug.assert(@mod(header_size + padding, @sizeOf(Item)) == 0);
-            }
-            const slot = try self.allocateSize(offset + array_size);
-
-            const header: *Array4 = @ptrCast(&self.memory[slot]);
-            const hi: u8 = @intCast(size >> 16);
-            header.kind = T.Kind;
-            header.len = hi | 0x80;
-            header.extra = @intCast(size);
-
-            const items: [*]Item = @ptrCast(&self.memory[slot]);
-            @memcpy(items[offset / @sizeOf(Item) ..], values);
-            return Array.init(slot);
-        }
-    }
-
-    pub inline fn open(self: *Heap, comptime T: type, array: Array) []const T.Type {
-        const Item = T.Type;
-        const slot = array.val();
-        const header: *Array2 = @ptrCast(&self.memory[slot]);
-        if (header.len & 0x80 == 0) {
-            const padding = @max(0, @alignOf(Item) - @sizeOf(Array2));
-            const header_size = @sizeOf(Array2) + padding;
-            const offset = header_size / @sizeOf(Item);
-            const items: [*]Item = @ptrCast(&self.memory[slot]);
-            return items[offset .. offset + header.len];
-        } else {
-            @panic("not implemented");
         }
     }
 };

@@ -8,6 +8,7 @@ const parser = @import("parser.zig");
 pub const Type = value.Type;
 pub const Heap = heap.Heap;
 pub const MutBlock = block.MutBlock;
+pub const ArrayOf = block.ArrayOf;
 pub const parse = parser.parse;
 
 pub const None = value.None;
@@ -25,14 +26,16 @@ test "basic values" {
 }
 
 test "heap values" {
-    var theap = try Heap.init(std.testing.allocator, 1024 * 1024);
-    defer theap.deinit(std.testing.allocator);
+    var hp = try Heap.init(std.testing.allocator, 1024 * 1024);
+    defer hp.deinit(std.testing.allocator);
 
-    const arr = try theap.allocate(I32, &[_]i32{ 1, 2, 3, 4, 5 });
+    const ai32 = ArrayOf(I32);
+    const arr = try ai32.allocate(&hp, &[_]i32{ 1, 2, 3, 4, 5 });
+    // const arr = try theap.allocate(I32, &[_]i32{ 1, 2, 3, 4, 5 });
     std.debug.print("arr: {any}\n", .{arr});
-    std.debug.print("arr: {any}\n", .{theap.open(I32, arr)});
+    std.debug.print("arr: {any}\n", .{arr.open(&hp)});
 
-    try parse(std.testing.allocator, &theap, " \"hello\" ");
+    try parse(std.testing.allocator, &hp, " \"hello\" ");
 }
 
 test "block values" {

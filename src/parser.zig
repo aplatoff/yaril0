@@ -42,7 +42,8 @@ pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!void
                 if (s[0] == '"') break;
                 try string.appendSlice(s);
             }
-            try stack[sp].append(try string.allocate(hp));
+            const arr = try string.allocate(hp);
+            try stack[sp].append(arr.ptr());
             continue;
         }
     }
