@@ -29,23 +29,36 @@ test "basic values" {
 }
 
 test "heap values" {
-    var hp = try Heap.init(std.testing.allocator, 1024 * 1024);
-    defer hp.deinit(std.testing.allocator);
+    const mem = try std.testing.allocator.alloc(u32, 65536);
+    defer std.testing.allocator.free(mem);
+    var heap_obj = Heap.init(mem);
+    const hp = &heap_obj;
 
     const ai32 = ArrayOf(I32);
-    const arr = try ai32.allocate(&hp, &[_]i32{ 1, 2, 3, 4, 5 });
-    // const arr = try theap.allocate(I32, &[_]i32{ 1, 2, 3, 4, 5 });
+    const arr = try ai32.allocate(hp, &[_]i32{ 1, 2, 3, 4, 5 });
     std.debug.print("arr: {any}\n", .{arr});
-    std.debug.print("arr: {any}\n", .{arr.open(&hp)});
+    std.debug.print("arr: {any}\n", .{arr.open(hp)});
 
-    const p = try parse(std.testing.allocator, &hp, " \"hello\" ");
+    const p = try parse(std.testing.allocator, hp, " \"hello\" ");
     std.debug.print("p: {any}\n", .{p});
 }
 
 test "block values" {
-    var b = MutBlock.init(std.testing.allocator);
-    defer b.deinit();
-    try b.append(I32.init(35234));
-    try b.append(U8.init(234));
-    try b.append(I32.init(777));
+    var mb = MutBlock.init(std.testing.allocator);
+    try mb.append(I32.init(35234));
+    try mb.append(U8.init(234));
+    try mb.append(I32.init(777));
+
+    const mem = try std.testing.allocator.alloc(u32, 65536);
+    defer std.testing.allocator.free(mem);
+    var heap_obj = Heap.init(mem);
+    const hp = &heap_obj;
+
+    const b = try mb.allocate(hp);
+    hp.debugDump();
+
+    var it = block.BlockIterator.init(hp, b);
+    while (it.next()) {
+        std.debug.print("it: {any}: {any}\n", .{ it.kind(), it.value() });
+    }
 }

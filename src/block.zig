@@ -113,7 +113,7 @@ pub fn MutArray(comptime T: type) type {
     };
 }
 
-const Ptr = struct {
+const Ptr = packed struct {
     type: ValueKind,
     offset: u24,
 };
@@ -128,23 +128,23 @@ pub const BlockIterator = struct {
     pub fn init(hp: *Heap, block: Block) BlockIterator {
         const slot = block.val();
         const ptr = hp.slotPtr([*]u8, slot);
-        const slot_ptr: *HeapPointer = @ptrCast(ptr);
-        return BlockIterator{ .ptr = ptr, .len = slot_ptr.*, .pos = ~0 };
+        const slot_ptr = hp.slotPtr(*HeapPointer, slot);
+        return BlockIterator{ .ptr = ptr, .len = slot_ptr.*, .pos = 0 };
     }
 
     pub inline fn next(self: *BlockIterator) bool {
         self.pos += 1;
-        return self.pos < self.len;
+        return self.pos <= self.len;
     }
 
     pub inline fn kind(self: BlockIterator) ValueKind {
-        const ptrs: [*]Ptr = @ptrCast(&self.ptr[@sizeOf(HeapPointer)]);
-        return ptrs[self.pos].type;
+        const ptrs: [*]Ptr = @alignCast(@ptrCast(&self.ptr[@sizeOf(HeapPointer)]));
+        return ptrs[self.pos - 1].type;
     }
 
-    pub inline fn value(self: BlockIterator) [*]u8 {
-        const ptrs: [*]Ptr = @ptrCast(&self.ptr[@sizeOf(HeapPointer)]);
-        const offset = ptrs[self.pos].offset;
+    pub inline fn value(self: BlockIterator) *u8 {
+        const ptrs: [*]Ptr = @alignCast(@ptrCast(&self.ptr[@sizeOf(HeapPointer)]));
+        const offset = ptrs[self.pos - 1].offset;
 
         const values_offset = @sizeOf(HeapPointer) + @sizeOf(Ptr) * self.len;
         return &self.ptr[values_offset + offset];
