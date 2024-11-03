@@ -22,8 +22,6 @@ pub const U8 = value.U8;
 pub const I32 = value.I32;
 pub const U32 = value.U32;
 
-pub const TYPES = [_]type{ &None, &Array, &Block, &U8, &I32, &U32 };
-
 test "basic values" {
     const testing = std.testing;
     const int32 = I32.init(42);
@@ -74,8 +72,8 @@ test "blocks" {
 
     // hp.debugDump();
 
-    // var it = BlockIterator.init(hp, b.val());
-    // while (it.next()) {
-    //     std.debug.print("it: {any}: {any}\n", .{ it.kind(), it.value() });
-    // }
+    var it = BlockIterator.init(hp, b.val());
+    while (it.next()) {
+        std.debug.print("it: {any}: {any}\n", .{ it.kind(), it.value() });
+    }
 }

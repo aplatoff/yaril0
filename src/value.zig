@@ -29,6 +29,18 @@ pub fn Type(comptime kind: ValueKind, comptime T: type) type {
     };
 }
 
+pub const RTTI = struct {
+    toString: fn (value: *u8) []const u8,
+};
+
+fn noneToString(_: *u8) []const u8 {
+    return "None";
+}
+
+const NoneRtti = RTTI{
+    .toString = noneToString,
+};
+
 pub const None = Type(0, void);
 
 pub const U8 = Type(3, u8);
