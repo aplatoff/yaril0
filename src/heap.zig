@@ -2,15 +2,21 @@
 const std = @import("std");
 const val = @import("value.zig");
 
-const Allocator = std.mem.Allocator;
-
 const ValueKind = val.ValueKind;
 const ValueError = val.ValueError;
 const Type = val.Type;
 
-pub const HeapPointer = u32; // used as index into memory array
-pub const Slot = u32; // memory slot mininal size and alignement
 pub const SizeClass = u4;
+pub const HeapPointer = u32; // used as index into memory array
+pub const HeapObject = packed struct {
+    size: SizeClass,
+    _padding: u28,
+};
+
+pub const Slot = packed union {
+    next_free: HeapPointer,
+    data: HeapObject,
+};
 
 pub const Heap = struct {
     const SizeClasses = 16;
@@ -32,9 +38,9 @@ pub const Heap = struct {
     next: usize,
     free_lists: [SizeClasses]HeapPointer,
 
-    pub fn init(memory: []Slot) Heap {
+    pub fn init(memory: []u32) Heap {
         return Heap{
-            .memory = memory,
+            .memory = @ptrCast(memory),
             .next = 1,
             .free_lists = .{0} ** SizeClasses,
         };
@@ -42,7 +48,7 @@ pub const Heap = struct {
 
     pub fn debugDump(self: *Heap) void {
         for (0..self.next) |slot| {
-            std.debug.print("{x} {x}\n", .{ slot, self.memory[slot] });
+            std.debug.print("{x} {x}\n", .{ slot, self.memory[slot].next_free });
         }
     }
 
@@ -55,7 +61,7 @@ pub const Heap = struct {
         const size_class = getSizeClass(size);
         const free_slot = self.free_lists[size_class];
         if (free_slot != 0) {
-            self.free_lists[size_class] = self.memory[free_slot];
+            self.free_lists[size_class] = self.memory[free_slot].next_free;
             return free_slot;
         } else {
             const slot = self.next;
