@@ -9,16 +9,18 @@ const Allocator = std.mem.Allocator;
 const ValueError = value.ValueError;
 const Heap = heap.Heap;
 
+const Array = block.Array;
 const Block = block.Block;
-const MutBlock = block.MutBlock;
-const MutArray = block.MutArray;
 
-pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!Block {
+const ArrayOf = block.ArrayOf;
+const BlockType = block.BlockType;
+
+pub fn parse(hp: *Heap, bytes: []const u8) ValueError!Block {
     const STACK_SIZE = 128;
 
-    var stack: [STACK_SIZE]MutBlock = undefined;
+    var stack: [STACK_SIZE]BlockType = undefined;
     const sp: usize = 0;
-    stack[sp] = MutBlock.init(allocator);
+    stack[sp] = try BlockType.allocate0(hp);
 
     var it = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
     while (it.nextCodepointSlice()) |slice| {
@@ -31,23 +33,23 @@ pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!Bloc
                 }
                 val = val * 10 + (s[0] - '0');
             }
-            try stack[sp].append(value.I32.init(val));
+            try stack[sp].append(hp, value.I32, val);
             continue;
         }
 
         if (std.ascii.isWhitespace(slice[0])) continue;
 
         if (slice[0] == '"') {
-            var string = MutArray(value.U8).init(allocator);
+            var string = try ArrayOf(value.U8).allocate0(hp);
             while (it.nextCodepointSlice()) |s| {
                 if (s[0] == '"') break;
-                try string.appendSlice(s);
+                const append = try string.append(hp, s, 1);
+                if (append.new_array) |array| string = ArrayOf(value.U8).init(array);
             }
-            const arr = try string.allocate(hp);
-            try stack[sp].append(arr.ptr());
+            try stack[sp].append(hp, Array, string.val().val());
             continue;
         }
     }
 
-    return try stack[sp].allocate(hp);
+    return stack[sp].val();
 }

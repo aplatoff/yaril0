@@ -1,25 +1,29 @@
 //
 
 const std = @import("std");
-const val = @import("value.zig");
+const value = @import("value.zig");
 const heap = @import("heap.zig");
 
 const Allocator = std.mem.Allocator;
-const ValueKind = val.ValueKind;
-const ValueError = val.ValueError;
-const Type = val.Type;
+const ValueKind = value.ValueKind;
+const ValueError = value.ValueError;
+const Type = value.Type;
+
+const U8 = value.U8;
+const U32 = value.U32;
 
 const Heap = heap.Heap;
 const HeapPointer = heap.HeapPointer;
 const SizeClass = heap.SizeClass;
 
-pub const Array = Type(1, HeapPointer);
+pub const Array = Type(1, HeapPointer); // array, values of same type
+pub const Block = Type(2, HeapPointer); // immutable block, values of different types
 
 const ArrayHeader = packed struct {
-    size: SizeClass,
-    _padding: u4,
+    len: u19,
+    mutable: bool,
+    storage: SizeClass,
     kind: ValueKind,
-    len: u16,
 };
 
 pub fn ArrayOf(comptime T: type) type {
@@ -27,158 +31,195 @@ pub fn ArrayOf(comptime T: type) type {
         const Item = T.Type;
         const Self = @This();
 
-        value: Array,
-
-        pub fn init(value: Array) Self {
-            return Self{ .value = value };
+        const Offset = std.mem.alignForward(usize, @sizeOf(ArrayHeader), @alignOf(Item));
+        const OffsetItems = Offset / @sizeOf(Item);
+        comptime {
+            std.debug.assert(OffsetItems * @sizeOf(Item) == Offset);
         }
 
-        pub fn allocate(hp: *Heap, values: []const Item) ValueError!Self {
-            const size = values.len;
-            const array_size = size * @sizeOf(Item);
-            const padding = @max(0, @alignOf(Item) - @sizeOf(ArrayHeader));
-            const offset = @sizeOf(ArrayHeader) + padding;
-            comptime {
-                std.debug.assert(@mod(offset, @sizeOf(Item)) == 0);
-            }
-            const slot = try hp.allocate(offset + array_size);
+        value: Array,
+
+        pub inline fn init(array: Array) Self {
+            return Self{ .value = array };
+        }
+
+        pub inline fn val(self: Self) Array {
+            return self.value;
+        }
+
+        inline fn size(length: usize) usize {
+            return Offset + @sizeOf(Item) * length;
+        }
+
+        inline fn len(self: Self, hp: *Heap) usize {
+            const slot = self.value.val();
+            const header = hp.slotPtr(*ArrayHeader, slot);
+            return @intCast(header.len);
+        }
+
+        pub fn allocate(hp: *Heap, values: []const Item, cap: usize) ValueError!Self {
+            const alloc = try hp.allocate(@max(cap, size(values.len)));
+            const slot = alloc.slot;
 
             const header = hp.slotPtr(*ArrayHeader, slot);
+            header.len = @intCast(values.len);
+            header.mutable = true;
+            header.storage = alloc.class;
             header.kind = T.Kind;
-            header.len = @intCast(size);
 
-            const items = hp.slotPtr([*]Item, slot);
-            @memcpy(items[offset / @sizeOf(Item) ..], values);
+            const items_ptr = hp.slotPtr([*]Item, slot);
+            @memcpy(items_ptr[OffsetItems..], values);
             return init(Array.init(slot));
         }
 
-        pub fn open(self: Self, hp: *Heap) []const T.Type {
+        pub fn allocate0(hp: *Heap) ValueError!Self {
+            const slot = try hp.allocate0(ArrayHeader, ArrayHeader{
+                .len = 0,
+                .mutable = true,
+                .storage = 0,
+                .kind = T.Kind,
+            });
+            return init(Array.init(slot));
+        }
+
+        pub inline fn append(
+            self: *const Self,
+            hp: *Heap,
+            values: []const Item,
+            alignment: usize,
+        ) ValueError!struct { pos: usize, new_array: ?Array } {
             const slot = self.value.val();
             const header = hp.slotPtr(*ArrayHeader, slot);
-            const padding = @max(0, @alignOf(Item) - @sizeOf(ArrayHeader));
-            const offset = (@sizeOf(ArrayHeader) + padding) / @sizeOf(Item);
-            const items = hp.slotPtr([*]Item, slot);
-            return items[offset .. offset + header.len];
+            if (!header.mutable) return ValueError.ImmutableValue;
+
+            const length: usize = @intCast(header.len);
+            const cur_size = size(length);
+            const cur_size_aligned = std.mem.alignForward(usize, cur_size, alignment);
+            const padding = cur_size_aligned - cur_size;
+            // ensure padding alined with item size
+            const padding_items = padding / @sizeOf(Item);
+            std.debug.assert(padding_items * @sizeOf(Item) == padding);
+            const pos = length + padding_items;
+            const new_size = cur_size_aligned + @sizeOf(Item) * values.len;
+
+            const cap = heap.Sizes[header.storage];
+            if (new_size > cap) {
+                const items_ptr = hp.slotPtr([*]Item, slot);
+                const alloc = try Self.allocate(hp, items_ptr[OffsetItems .. OffsetItems + length], new_size);
+                const new_array = alloc.value;
+                const new_array_header = hp.slotPtr(*ArrayHeader, new_array.val());
+                const new_items: [*]Item = @constCast(@ptrCast(new_array_header));
+
+                @memcpy(new_items[OffsetItems + pos ..], values);
+                new_array_header.len = @intCast(pos + values.len);
+                hp.freeClass(slot, header.storage);
+                return .{ .pos = pos, .new_array = new_array };
+            } else {
+                const new_items: [*]Item = @constCast(@ptrCast(header));
+                @memcpy(new_items[OffsetItems + pos ..], values);
+                header.len = @intCast(pos + values.len);
+                return .{ .pos = pos, .new_array = null };
+            }
         }
 
-        pub fn ptr(self: Self) Array {
-            return self.value;
+        pub fn items(self: Self, hp: *Heap) []const T.Type {
+            const slot = self.value.val();
+            const header = hp.slotPtr(*ArrayHeader, slot);
+            const items_ptr = hp.slotPtr([*]Item, slot);
+            return items_ptr[OffsetItems .. OffsetItems + header.len];
         }
     };
 }
 
-pub fn MutArray(comptime T: type) type {
-    return struct {
-        const Item = T.Type;
-        const Self = @This();
-
-        values: std.ArrayList(Item),
-
-        pub fn init(allocator: Allocator) Self {
-            return Self{ .values = std.ArrayList(Item).init(allocator) };
-        }
-
-        pub fn append(self: *Self, value: Item) ValueError!void {
-            return self.values.append(value) catch return ValueError.OutOfMemory;
-        }
-
-        pub fn appendSlice(self: *Self, values: []const Item) ValueError!void {
-            return self.values.appendSlice(values) catch return ValueError.OutOfMemory;
-        }
-
-        pub fn allocate(self: *Self, hp: *Heap) ValueError!ArrayOf(T) {
-            defer self.values.deinit();
-            return ArrayOf(T).allocate(hp, self.values.items);
-        }
-    };
-}
-
-const Ptr = packed struct {
-    type: ValueKind,
-    offset: u24,
+const MaxOffset = 1 << 24;
+const Offsets = packed union {
+    data: packed struct { offset: u24, type: ValueKind },
+    raw: u32,
 };
 
-pub const Block = Type(2, HeapPointer);
-
 pub const BlockIterator = struct {
-    ptr: [*]u8,
-    len: usize,
+    offsets: []const Offsets,
+    values: []const u8,
     pos: usize,
 
     pub fn init(hp: *Heap, block: Block) BlockIterator {
-        const slot = block.val();
-        const ptr = hp.slotPtr([*]u8, slot);
-        const slot_ptr = hp.slotPtr(*HeapPointer, slot);
-        return BlockIterator{ .ptr = ptr, .len = slot_ptr.*, .pos = 0 };
+        const header = hp.slotPtr(*BlockHeader, block.val());
+        const values = ArrayOf(U8).init(header.values);
+        const offsets = ArrayOf(U32).init(header.offsets);
+        return BlockIterator{
+            .offsets = @ptrCast(offsets.items(hp)),
+            .values = @ptrCast(values.items(hp)),
+            .pos = 0,
+        };
     }
 
     pub inline fn next(self: *BlockIterator) bool {
         self.pos += 1;
-        return self.pos <= self.len;
+        return self.pos <= self.offsets.len;
     }
 
     pub inline fn kind(self: BlockIterator) ValueKind {
-        const ptrs: [*]Ptr = @alignCast(@ptrCast(&self.ptr[@sizeOf(HeapPointer)]));
-        return ptrs[self.pos - 1].type;
+        return self.offsets[self.pos - 1].data.type;
     }
 
-    pub inline fn value(self: BlockIterator) *u8 {
-        const ptrs: [*]Ptr = @alignCast(@ptrCast(&self.ptr[@sizeOf(HeapPointer)]));
-        const offset = ptrs[self.pos - 1].offset;
-
-        const values_offset = @sizeOf(HeapPointer) + @sizeOf(Ptr) * self.len;
-        return &self.ptr[values_offset + offset];
+    pub inline fn value(self: BlockIterator) *const u8 {
+        const offset = self.offsets[self.pos - 1].data.offset;
+        return &self.values[offset];
     }
 };
 
-pub const MutBlock = struct {
-    const MAX_OFFSET = 1 << 24;
+const BlockHeader = struct {
+    offsets: Array,
+    values: Array,
+}; // do not use packed, it will cause alignment issue
 
-    ptrs: std.ArrayList(Ptr),
-    values: std.ArrayList(u8),
-
-    pub fn init(allocator: Allocator) MutBlock {
-        return MutBlock{
-            .ptrs = std.ArrayList(Ptr).init(allocator),
-            .values = std.ArrayList(u8).init(allocator),
-        };
+pub const BlockType = struct {
+    comptime {
+        std.debug.assert(@sizeOf(BlockHeader) == 8);
     }
 
-    pub fn deinit(self: *MutBlock) void {
-        self.ptrs.deinit();
-        self.values.deinit();
+    const Self = @This();
+
+    value: Block,
+
+    pub inline fn init(block: Block) Self {
+        return Self{ .value = block };
     }
 
-    pub inline fn append(self: *MutBlock, value: anytype) ValueError!void {
-        const T = @TypeOf(value);
+    pub inline fn val(self: Self) Block {
+        return self.value;
+    }
+
+    pub fn allocate0(hp: *Heap) ValueError!Self {
+        const offsets = try ArrayOf(U32).allocate0(hp);
+        const values = try ArrayOf(U8).allocate0(hp);
+
+        const slot = try hp.allocate0(BlockHeader, BlockHeader{
+            .offsets = offsets.val(),
+            .values = values.val(),
+        });
+        return init(Block.init(slot));
+    }
+
+    pub inline fn append(self: *const BlockType, hp: *Heap, comptime T: type, item: T.Type) ValueError!void {
         const Item = T.Type;
-        const len = self.values.items.len;
-        const offset = std.mem.alignForward(usize, len, @alignOf(Item));
-        if (offset + @sizeOf(Item) > MAX_OFFSET) return ValueError.OutOfMemory;
-        const padding = offset - len;
-        if (padding > 0) try self.values.appendNTimes(0, padding);
-        try self.values.appendSlice(std.mem.asBytes(&value));
-        try self.ptrs.append(Ptr{ .type = T.Kind, .offset = @intCast(offset) });
-    }
 
-    pub fn allocate(self: *MutBlock, hp: *Heap) ValueError!Block {
-        defer self.deinit();
+        const header = hp.slotPtr(*BlockHeader, self.value.val());
+        const values = ArrayOf(U8).init(header.values);
+        const offsets = ArrayOf(U32).init(header.offsets);
 
-        const header_size = @sizeOf(HeapPointer);
-        const len = self.ptrs.items.len;
-        const ptrs_size = len * @sizeOf(Ptr);
-        const values_size = self.values.items.len;
+        const bytes = std.mem.toBytes(item);
+        const values_append = try values.append(hp, &bytes, @alignOf(Item));
+        if (values_append.new_array) |array| {
+            header.values = array;
+        }
 
-        const size = header_size + ptrs_size + values_size;
-        const slot = try hp.allocate(size);
-
-        const header = hp.slotPtr(*HeapPointer, slot);
-        header.* = @intCast(len);
-        const ptrs = hp.slotPtr([*]Ptr, slot);
-        @memcpy(ptrs[1 .. len + 1], self.ptrs.items);
-        const values = hp.slotPtr([*]u8, slot);
-        @memcpy(values[header_size + ptrs_size ..], self.values.items);
-
-        return Block.init(slot);
+        const offset = Offsets{
+            .data = .{ .offset = @intCast(values_append.pos), .type = T.Kind },
+        };
+        const offsets_append = try offsets.append(hp, &[_]u32{offset.raw}, 1);
+        if (offsets_append.new_array) |array| {
+            header.offsets = array;
+        }
     }
 };

@@ -1,7 +1,12 @@
 //
 // const std = @import("std");
 
-pub const ValueError = error{ TypeMismatch, InvalidValue, OutOfMemory };
+pub const ValueError = error{
+    TypeMismatch,
+    InvalidValue,
+    OutOfMemory,
+    ImmutableValue,
+};
 pub const ValueKind = u8;
 
 pub fn Type(comptime kind: ValueKind, comptime T: type) type {
@@ -28,3 +33,4 @@ pub const None = Type(0, void);
 
 pub const U8 = Type(3, u8);
 pub const I32 = Type(4, i32);
+pub const U32 = Type(5, u32);
