@@ -12,11 +12,14 @@ pub const ArrayOf = block.ArrayOf;
 pub const parse = parser.parse;
 
 pub const None = value.None;
-pub const Array = heap.Array;
+
+pub const Array = block.Array;
+pub const Block = block.Block;
+
 pub const U8 = value.U8;
 pub const I32 = value.I32;
 
-pub const TYPES = [_]type{ &None, &Array, &U8, &I32 };
+pub const TYPES = [_]type{ &None, &Array, &Block, &U8, &I32 };
 
 test "basic values" {
     const testing = std.testing;
@@ -35,7 +38,8 @@ test "heap values" {
     std.debug.print("arr: {any}\n", .{arr});
     std.debug.print("arr: {any}\n", .{arr.open(&hp)});
 
-    try parse(std.testing.allocator, &hp, " \"hello\" ");
+    const p = try parse(std.testing.allocator, &hp, " \"hello\" ");
+    std.debug.print("p: {any}\n", .{p});
 }
 
 test "block values" {

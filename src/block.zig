@@ -7,8 +7,12 @@ const heap = @import("heap.zig");
 const Allocator = std.mem.Allocator;
 const ValueKind = val.ValueKind;
 const ValueError = val.ValueError;
+const Type = val.Type;
+
 const Heap = heap.Heap;
-const Array = heap.Array;
+const HeapPointer = heap.HeapPointer;
+
+pub const Array = Type(1, HeapPointer);
 
 const Array2 = packed struct { kind: ValueKind, len: u8 };
 const Array4 = packed struct { kind: ValueKind, len: u8, extra: u16 };
@@ -35,13 +39,12 @@ pub fn ArrayOf(comptime T: type) type {
                     std.debug.assert(@mod(offset, @sizeOf(Item)) == 0);
                 }
                 const slot = try hp.allocate(offset + array_size);
-                const slot_ptr = hp.slotPtr(slot);
 
-                const header: *Array2 = @ptrCast(slot_ptr);
+                const header = hp.slotPtr(*Array2, slot);
                 header.kind = T.Kind;
                 header.len = @intCast(size);
 
-                const items: [*]Item = @ptrCast(slot_ptr);
+                const items = hp.slotPtr([*]Item, slot);
                 @memcpy(items[offset / @sizeOf(Item) ..], values);
                 return init(Array.init(slot));
             } else {
@@ -51,15 +54,14 @@ pub fn ArrayOf(comptime T: type) type {
                     std.debug.assert(@mod(@sizeOf(Array4) + padding, @sizeOf(Item)) == 0);
                 }
                 const slot = try hp.allocate(offset + array_size);
-                const slot_ptr = hp.slotPtr(slot);
 
-                const header: *Array4 = @ptrCast(slot_ptr);
+                const header = hp.slotPtr(*Array4, slot);
                 const hi: u8 = @intCast(size >> 16);
                 header.kind = T.Kind;
                 header.len = hi | 0x80;
                 header.extra = @intCast(size);
 
-                const items: [*]Item = @ptrCast(slot_ptr);
+                const items = hp.slotPtr([*]Item, slot);
                 @memcpy(items[offset / @sizeOf(Item) ..], values);
                 return init(Array.init(slot));
             }
@@ -67,13 +69,12 @@ pub fn ArrayOf(comptime T: type) type {
 
         pub fn open(self: Self, hp: *Heap) []const T.Type {
             const slot = self.value.val();
-            const slot_ptr = hp.slotPtr(slot);
-            const header: *Array2 = @ptrCast(slot_ptr);
+            const header = hp.slotPtr(*Array2, slot);
 
             if (header.len & 0x80 == 0) {
                 const padding = @max(0, @alignOf(Item) - @sizeOf(Array2));
                 const offset = (@sizeOf(Array2) + padding) / @sizeOf(Item);
-                const items: [*]Item = @ptrCast(slot_ptr);
+                const items = hp.slotPtr([*]Item, slot);
                 return items[offset .. offset + header.len];
             } else {
                 @panic("not implemented");
@@ -117,6 +118,39 @@ const Ptr = struct {
     offset: u24,
 };
 
+pub const Block = Type(2, HeapPointer);
+
+pub const BlockIterator = struct {
+    ptr: [*]u8,
+    len: usize,
+    pos: usize,
+
+    pub fn init(hp: *Heap, block: Block) BlockIterator {
+        const slot = block.val();
+        const ptr = hp.slotPtr([*]u8, slot);
+        const slot_ptr: *HeapPointer = @ptrCast(ptr);
+        return BlockIterator{ .ptr = ptr, .len = slot_ptr.*, .pos = ~0 };
+    }
+
+    pub inline fn next(self: *BlockIterator) bool {
+        self.pos += 1;
+        return self.pos < self.len;
+    }
+
+    pub inline fn kind(self: BlockIterator) ValueKind {
+        const ptrs: [*]Ptr = @ptrCast(&self.ptr[@sizeOf(HeapPointer)]);
+        return ptrs[self.pos].type;
+    }
+
+    pub inline fn value(self: BlockIterator) [*]u8 {
+        const ptrs: [*]Ptr = @ptrCast(&self.ptr[@sizeOf(HeapPointer)]);
+        const offset = ptrs[self.pos].offset;
+
+        const values_offset = @sizeOf(HeapPointer) + @sizeOf(Ptr) * self.len;
+        return &self.ptr[values_offset + offset];
+    }
+};
+
 pub const MutBlock = struct {
     const MAX_OFFSET = 1 << 24;
 
@@ -145,5 +179,26 @@ pub const MutBlock = struct {
         if (padding > 0) try self.values.appendNTimes(0, padding);
         try self.values.appendSlice(std.mem.asBytes(&value));
         try self.ptrs.append(Ptr{ .type = T.Kind, .offset = @intCast(offset) });
+    }
+
+    pub fn allocate(self: *MutBlock, hp: *Heap) ValueError!Block {
+        defer self.deinit();
+
+        const header_size = @sizeOf(HeapPointer);
+        const len = self.ptrs.items.len;
+        const ptrs_size = len * @sizeOf(Ptr);
+        const values_size = self.values.items.len;
+
+        const size = header_size + ptrs_size + values_size;
+        const slot = try hp.allocate(size);
+
+        const header = hp.slotPtr(*HeapPointer, slot);
+        header.* = @intCast(len);
+        const ptrs = hp.slotPtr([*]Ptr, slot);
+        @memcpy(ptrs[1 .. len + 1], self.ptrs.items);
+        const values = hp.slotPtr([*]u8, slot);
+        @memcpy(values[header_size + ptrs_size ..], self.values.items);
+
+        return Block.init(slot);
     }
 };

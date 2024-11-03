@@ -25,5 +25,6 @@ pub fn Type(comptime kind: ValueKind, comptime T: type) type {
 }
 
 pub const None = Type(0, void);
-pub const U8 = Type(2, u8);
-pub const I32 = Type(3, i32);
+
+pub const U8 = Type(3, u8);
+pub const I32 = Type(4, i32);

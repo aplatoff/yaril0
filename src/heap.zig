@@ -8,8 +8,7 @@ const ValueKind = val.ValueKind;
 const ValueError = val.ValueError;
 const Type = val.Type;
 
-const HeapPointer = u32;
-pub const Array = Type(1, HeapPointer);
+pub const HeapPointer = u32;
 
 pub const Heap = struct {
     const Slot = HeapPointer;
@@ -53,11 +52,11 @@ pub const Heap = struct {
         allocator.free(self.memory);
     }
 
-    pub inline fn slotPtr(self: *Heap, slot: HeapPointer) *Slot {
-        return &self.memory[slot];
+    pub inline fn slotPtr(self: *Heap, comptime T: type, slot: HeapPointer) T {
+        return @ptrCast(&self.memory[slot]);
     }
 
-    pub inline fn allocate(self: *Heap, size: usize) !HeapPointer {
+    pub inline fn allocate(self: *Heap, size: usize) ValueError!HeapPointer {
         const size_class = getSizeClass(size);
         if (size_class == NUM_SIZE_CLASSES) return ValueError.OutOfMemory;
         const free_slot = self.free_lists[size_class];

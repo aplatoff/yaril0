@@ -8,16 +8,17 @@ const block = @import("block.zig");
 const Allocator = std.mem.Allocator;
 const ValueError = value.ValueError;
 const Heap = heap.Heap;
+
+const Block = block.Block;
 const MutBlock = block.MutBlock;
 const MutArray = block.MutArray;
 
-pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!void {
+pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!Block {
     const STACK_SIZE = 128;
 
     var stack: [STACK_SIZE]MutBlock = undefined;
     const sp: usize = 0;
     stack[sp] = MutBlock.init(allocator);
-    defer stack[sp].deinit();
 
     var it = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
     while (it.nextCodepointSlice()) |slice| {
@@ -47,4 +48,6 @@ pub fn parse(allocator: Allocator, hp: *Heap, bytes: []const u8) ValueError!void
             continue;
         }
     }
+
+    return try stack[sp].allocate(hp);
 }
