@@ -12,6 +12,7 @@ pub const ValueKind = u8;
 pub fn Type(comptime kind: ValueKind, comptime T: type) type {
     return packed struct {
         pub const Type = T;
+        pub const Align = @alignOf(T);
         pub const Kind = kind;
         const Self = @This();
 

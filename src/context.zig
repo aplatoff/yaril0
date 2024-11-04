@@ -57,11 +57,11 @@ pub const LinearContext = struct {
         const values = BlockType.init(header.values);
 
         try values.append(hp, kind, bytes, alignment);
-        const key_append = try keys.appendItem(hp, U32, key);
+        const key_append = try keys.appendItem(hp, key);
         if (key_append.new_array) |array| header.keys = array;
     }
 
     pub fn appendItem(self: *const Self, hp: *Heap, key: u32, comptime T: type, item: T.Type) ValueError!void {
-        return self.append(hp, key, T.kind, std.mem.toBytes(item), @alignOf(T.Type));
+        return self.append(hp, key, T.Kind, &std.mem.toBytes(item), @alignOf(T.Type));
     }
 };

@@ -23,6 +23,8 @@ const ArrayHeader = packed struct {
     kind: ValueKind,
 };
 
+const AppendResult = struct { pos: usize, new_array: ?Array };
+
 pub fn ArrayOf(comptime T: type) type {
     return packed struct {
         const Item = T.Type;
@@ -84,7 +86,7 @@ pub fn ArrayOf(comptime T: type) type {
             hp: *Heap,
             values: []const Item,
             alignment: usize,
-        ) ValueError!struct { pos: usize, new_array: ?Array } {
+        ) ValueError!AppendResult {
             const slot = self.value.val();
             const header = hp.slotPtr(*ArrayHeader, slot);
             if (!header.mutable) return ValueError.ImmutableValue;
@@ -119,8 +121,8 @@ pub fn ArrayOf(comptime T: type) type {
             }
         }
 
-        pub fn appendItem(self: *const Self, hp: *Heap, comptime I: type, item: I.Type) ValueError!struct { pos: usize, new_array: ?Array } {
-            return self.append(hp, &item, [_]Item{item}, @alignOf(I.Type));
+        pub inline fn appendItem(self: *const Self, hp: *Heap, item: Item) ValueError!AppendResult {
+            return self.append(hp, &[_]Item{item}, T.Align);
         }
 
         pub fn items(self: Self, hp: *Heap) []const T.Type {

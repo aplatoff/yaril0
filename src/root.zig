@@ -4,19 +4,25 @@ const value = @import("value.zig");
 const heap = @import("heap.zig");
 const block = @import("block.zig");
 const parser = @import("parser.zig");
+const context = @import("context.zig");
 
 pub const Type = value.Type;
+
+pub const Array = value.Array;
+pub const Block = value.Block;
+pub const Context = value.Context;
+
 pub const Heap = heap.Heap;
+
 pub const ArrayOf = block.ArrayOf;
 pub const BlockType = block.BlockType;
 pub const BlockIterator = block.BlockIterator;
 
+pub const LinearContext = context.LinearContext;
+
 pub const parse = parser.parse;
 
 pub const None = value.None;
-
-pub const Array = block.Array;
-pub const Block = block.Block;
 
 pub const U8 = value.U8;
 pub const I32 = value.I32;
@@ -42,18 +48,7 @@ test "heap values" {
     // hp.debugDump();
 }
 
-test "parser" {
-    const mem = try std.testing.allocator.alloc(u32, 65536);
-    defer std.testing.allocator.free(mem);
-    var heap_obj = Heap.init(mem);
-    const hp = &heap_obj;
-
-    const p = try parse(hp, " \"hello!!!\" ");
-    std.debug.print("p: {any}\n", .{p});
-    hp.debugDump();
-}
-
-test "blocks" {
+test "block" {
     const mem = try std.testing.allocator.alloc(u32, 65536);
     defer std.testing.allocator.free(mem);
     var heap_obj = Heap.init(mem);
@@ -76,4 +71,35 @@ test "blocks" {
     while (it.next()) {
         std.debug.print("it: {any}: {any}\n", .{ it.kind(), it.value() });
     }
+}
+
+test "parser" {
+    const mem = try std.testing.allocator.alloc(u32, 65536);
+    defer std.testing.allocator.free(mem);
+    var heap_obj = Heap.init(mem);
+    const hp = &heap_obj;
+
+    const p = try parse(hp, " \"hello!!!\" ");
+    std.debug.print("p: {any}\n", .{p});
+    // hp.debugDump();
+}
+
+test "context" {
+    const mem = try std.testing.allocator.alloc(u32, 65536);
+    defer std.testing.allocator.free(mem);
+    var heap_obj = Heap.init(mem);
+    const hp = &heap_obj;
+
+    const c = try LinearContext.allocate0(hp);
+    std.debug.print("context: {any}\n", .{c});
+    hp.debugDump();
+
+    try c.appendItem(hp, 0xCAFEBABE, I32, 0x77778888);
+    // try b.appendItem(hp, I32, -555);
+    // try b.appendItem(hp, U8, 234);
+    // try b.appendItem(hp, U8, 1);
+    // try b.appendItem(hp, U32, 0x777);
+    // try b.appendItem(hp, U32, 0xcc);
+
+    hp.debugDump();
 }
