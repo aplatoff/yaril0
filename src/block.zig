@@ -84,29 +84,26 @@ pub fn ArrayOf(comptime T: type) type {
             if (!header.mutable) return ValueError.ImmutableValue;
 
             const length: usize = @intCast(header.len);
+            const cur_items: [*]Item = @constCast(@ptrCast(header));
             const cur_size = size(length);
             const cur_size_aligned = std.mem.alignForward(usize, cur_size, alignment);
             const padding = cur_size_aligned - cur_size;
-            // ensure padding alined with item size
             const padding_items = padding / @sizeOf(Item);
             const pos = length + padding_items;
-            const new_size = cur_size_aligned + @sizeOf(Item) * values.len;
 
+            const new_size = cur_size_aligned + @sizeOf(Item) * values.len;
             const cap = heap.Sizes[header.storage];
             if (new_size > cap) {
-                const items_ptr = hp.slotPtr([*]Item, slot);
-                const alloc = try Self.allocate(hp, items_ptr[OffsetItems .. OffsetItems + length], new_size);
-                const new_array = alloc.value;
-                const new_array_header = hp.slotPtr(*ArrayHeader, new_array.val());
+                const new_array = try Self.allocate(hp, cur_items[OffsetItems .. OffsetItems + length], new_size);
+                const new_array_header = hp.slotPtr(*ArrayHeader, new_array.value.val());
                 const new_items: [*]Item = @constCast(@ptrCast(new_array_header));
 
                 @memcpy(new_items[OffsetItems + pos ..], values);
                 new_array_header.len = @intCast(pos + values.len);
                 hp.freeClass(slot, header.storage);
-                return .{ .pos = pos, .new_array = new_array };
+                return .{ .pos = pos, .new_array = new_array.value };
             } else {
-                const new_items: [*]Item = @constCast(@ptrCast(header));
-                @memcpy(new_items[OffsetItems + pos ..], values);
+                @memcpy(cur_items[OffsetItems + pos ..], values);
                 header.len = @intCast(pos + values.len);
                 return .{ .pos = pos, .new_array = null };
             }
