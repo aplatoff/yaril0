@@ -43,6 +43,12 @@ const NoneRtti = RTTI{
 
 pub const None = Type(0, void);
 
-pub const U8 = Type(3, u8);
-pub const I32 = Type(4, i32);
-pub const U32 = Type(5, u32);
+pub const Address = u32;
+pub const Array = Type(1, Address);
+pub const Block = Type(2, Address);
+pub const Context = Type(3, Address);
+
+pub const U32 = Type(4, u32);
+pub const I32 = Type(5, i32);
+
+pub const U8 = Type(6, u8);

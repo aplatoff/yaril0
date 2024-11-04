@@ -4,20 +4,17 @@ const std = @import("std");
 const value = @import("value.zig");
 const heap = @import("heap.zig");
 
-const Allocator = std.mem.Allocator;
 const ValueKind = value.ValueKind;
 const ValueError = value.ValueError;
 const Type = value.Type;
+const Array = value.Array;
+const Block = value.Block;
 
 const U8 = value.U8;
 const U32 = value.U32;
 
 const Heap = heap.Heap;
-const HeapPointer = heap.HeapPointer;
 const SizeClass = heap.SizeClass;
-
-pub const Array = Type(1, HeapPointer); // array, values of same type
-pub const Block = Type(2, HeapPointer); // immutable block, values of different types
 
 const ArrayHeader = packed struct {
     len: u19,
@@ -122,6 +119,10 @@ pub fn ArrayOf(comptime T: type) type {
             }
         }
 
+        pub fn appendItem(self: *const Self, hp: *Heap, comptime I: type, item: I.Type) ValueError!struct { pos: usize, new_array: ?Array } {
+            return self.append(hp, &item, [_]Item{item}, @alignOf(I.Type));
+        }
+
         pub fn items(self: Self, hp: *Heap) []const T.Type {
             const slot = self.value.val();
             const header = hp.slotPtr(*ArrayHeader, slot);
@@ -201,25 +202,21 @@ pub const BlockType = struct {
         return init(Block.init(slot));
     }
 
-    pub inline fn append(self: *const BlockType, hp: *Heap, comptime T: type, item: T.Type) ValueError!void {
-        const Item = T.Type;
-
+    pub inline fn append(self: *const BlockType, hp: *Heap, kind: ValueKind, bytes: []const u8, alignment: usize) ValueError!void {
         const header = hp.slotPtr(*BlockHeader, self.value.val());
         const values = ArrayOf(U8).init(header.values);
         const offsets = ArrayOf(U32).init(header.offsets);
 
-        const bytes = std.mem.toBytes(item);
-        const values_append = try values.append(hp, &bytes, @alignOf(Item));
-        if (values_append.new_array) |array| {
-            header.values = array;
-        }
+        const values_append = try values.append(hp, bytes, alignment);
+        if (values_append.new_array) |array| header.values = array;
 
-        const offset = Offsets{
-            .data = .{ .offset = @intCast(values_append.pos), .type = T.Kind },
-        };
+        const offset = Offsets{ .data = .{ .offset = @intCast(values_append.pos), .type = kind } };
         const offsets_append = try offsets.append(hp, &[_]u32{offset.raw}, 1);
-        if (offsets_append.new_array) |array| {
-            header.offsets = array;
-        }
+        if (offsets_append.new_array) |array| header.offsets = array;
+    }
+
+    pub inline fn appendItem(self: *const BlockType, hp: *Heap, comptime T: type, item: T.Type) ValueError!void {
+        const bytes = std.mem.toBytes(item);
+        return self.append(hp, T.Kind, &bytes, @alignOf(T.Type));
     }
 };

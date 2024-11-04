@@ -5,6 +5,7 @@ const val = @import("value.zig");
 const ValueKind = val.ValueKind;
 const ValueError = val.ValueError;
 const Type = val.Type;
+const Address = val.Address;
 
 pub const SizeClass = u4;
 pub const NumClasses = 16;
@@ -24,23 +25,19 @@ pub inline fn sizeClass(size: usize) SizeClass {
     return @intCast(@ctz(mask));
 }
 
-pub const HeapPointer = u32; // used as index into memory array
 pub const HeapObject = packed struct {
     size: SizeClass,
     _padding: u28,
 };
 
-pub const Slot = packed union {
-    next_free: HeapPointer,
-    data: HeapObject,
-};
+pub const Slot = Address;
 
-const Allocation = struct { slot: HeapPointer, class: SizeClass };
+const Allocation = struct { slot: Address, class: SizeClass };
 
 pub const Heap = struct {
     memory: []Slot,
     next: usize,
-    free_lists: [NumClasses]HeapPointer,
+    free_lists: [NumClasses]Address,
 
     pub fn init(memory: []u32) Heap {
         return Heap{
@@ -53,18 +50,18 @@ pub const Heap = struct {
     pub fn debugDump(self: *Heap) void {
         std.debug.print("next: {d}\n", .{self.next});
         for (0..self.next) |slot| {
-            std.debug.print("{x} {x}\n", .{ slot, self.memory[slot].next_free });
+            std.debug.print("{x} {x}\n", .{ slot, self.memory[slot] });
         }
     }
 
-    pub fn slotPtr(self: *Heap, comptime T: type, slot: HeapPointer) T {
+    pub fn slotPtr(self: *Heap, comptime T: type, slot: Address) T {
         return @ptrCast(&self.memory[slot]);
     }
 
-    pub inline fn allocateClass(self: *Heap, class: SizeClass) ValueError!HeapPointer {
+    pub inline fn allocateClass(self: *Heap, class: SizeClass) ValueError!Address {
         const free_slot = self.free_lists[class];
         if (free_slot != 0) {
-            self.free_lists[class] = self.memory[free_slot].next_free;
+            self.free_lists[class] = self.memory[free_slot];
             return free_slot;
         }
         const slot = self.next;
@@ -73,7 +70,7 @@ pub const Heap = struct {
         return @intCast(slot);
     }
 
-    pub fn allocate0(self: *Heap, comptime T: type, value: T) ValueError!HeapPointer {
+    pub fn allocate0(self: *Heap, comptime T: type, value: T) ValueError!Address {
         comptime std.debug.assert(@sizeOf(T) <= Sizes[0]);
         const slot = try self.allocateClass(0);
         const ptr: *T = @ptrCast(&self.memory[slot]);
@@ -87,7 +84,7 @@ pub const Heap = struct {
         return Allocation{ .slot = try self.allocateClass(class), .class = class };
     }
 
-    pub inline fn reallocate(self: *Heap, slot: HeapPointer, class: SizeClass, new_size: usize) ValueError!Allocation {
+    pub inline fn reallocate(self: *Heap, slot: Address, class: SizeClass, new_size: usize) ValueError!Allocation {
         if (new_size > SmallObjectLimit) @panic("large objects not supported");
         const new_class = sizeClass(new_size);
         if (class == new_class) return Allocation{ .slot = slot, .class = class };
@@ -104,8 +101,8 @@ pub const Heap = struct {
         return Allocation{ .slot = new_slot, .class = new_class };
     }
 
-    pub inline fn freeClass(self: *Heap, slot: HeapPointer, class: SizeClass) void {
-        self.memory[slot].next_free = self.free_lists[class];
+    pub inline fn freeClass(self: *Heap, slot: Address, class: SizeClass) void {
+        self.memory[slot] = self.free_lists[class];
         self.free_lists[class] = slot;
     }
 };

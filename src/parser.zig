@@ -5,12 +5,11 @@ const value = @import("value.zig");
 const heap = @import("heap.zig");
 const block = @import("block.zig");
 
-const Allocator = std.mem.Allocator;
 const ValueError = value.ValueError;
-const Heap = heap.Heap;
+const Array = value.Array;
+const Block = value.Block;
 
-const Array = block.Array;
-const Block = block.Block;
+const Heap = heap.Heap;
 
 const ArrayOf = block.ArrayOf;
 const BlockType = block.BlockType;
@@ -33,7 +32,7 @@ pub fn parse(hp: *Heap, bytes: []const u8) ValueError!Block {
                 }
                 val = val * 10 + (s[0] - '0');
             }
-            try stack[sp].append(hp, value.I32, val);
+            try stack[sp].appendItem(hp, value.I32, val);
             continue;
         }
 
@@ -46,7 +45,7 @@ pub fn parse(hp: *Heap, bytes: []const u8) ValueError!Block {
                 const append = try string.append(hp, s, 1);
                 if (append.new_array) |array| string = ArrayOf(value.U8).init(array);
             }
-            try stack[sp].append(hp, Array, string.val().val());
+            try stack[sp].appendItem(hp, Array, string.val().val());
             continue;
         }
     }

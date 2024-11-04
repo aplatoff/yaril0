@@ -63,12 +63,12 @@ test "blocks" {
     std.debug.print("b: {any}\n", .{b});
     // hp.debugDump();
 
-    try b.append(hp, I32, 31234);
-    try b.append(hp, I32, -555);
-    try b.append(hp, U8, 234);
-    try b.append(hp, U8, 1);
-    try b.append(hp, U32, 0x777);
-    try b.append(hp, U32, 0xcc);
+    try b.appendItem(hp, I32, 31234);
+    try b.appendItem(hp, I32, -555);
+    try b.appendItem(hp, U8, 234);
+    try b.appendItem(hp, U8, 1);
+    try b.appendItem(hp, U32, 0x777);
+    try b.appendItem(hp, U32, 0xcc);
 
     // hp.debugDump();
 
