@@ -28,6 +28,16 @@ pub const U8 = value.U8;
 pub const I32 = value.I32;
 pub const U32 = value.U32;
 
+export fn do_work(hp: *Heap) void {
+    const c = LinearContext.allocate0(hp) catch
+        @panic("failed to allocate context\n");
+    c.appendItem(hp, 0xCAFEBABE, I32, 0x77778888) catch
+        @panic("failed to append item\n");
+
+    _ = parse(hp, " \"hello\" ") catch
+        @panic("failed to parse\n");
+}
+
 test "basic values" {
     const testing = std.testing;
     const int32 = I32.init(42);

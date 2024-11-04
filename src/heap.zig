@@ -16,12 +16,10 @@ pub const Sizes: [NumClasses]usize =
 const SizeVector: @Vector(NumClasses, u16) = Sizes;
 const SlotSizes: [NumClasses]usize = Sizes / @as(@Vector(NumClasses, u16), @splat(@sizeOf(Slot)));
 
-pub inline fn sizeClass(size: usize) SizeClass {
+pub fn sizeClass(size: usize) SizeClass {
     const vec = @as(@Vector(NumClasses, u16), @splat(@intCast(size)));
     const cmp = Sizes > vec;
     const mask = @as(u16, @bitCast(cmp));
-    const class = @ctz(mask);
-    std.debug.assert(class < NumClasses);
     return @intCast(@ctz(mask));
 }
 
@@ -58,7 +56,7 @@ pub const Heap = struct {
         return @ptrCast(&self.memory[slot]);
     }
 
-    pub inline fn allocateClass(self: *Heap, class: SizeClass) ValueError!Address {
+    pub fn allocateClass(self: *Heap, class: SizeClass) ValueError!Address {
         const free_slot = self.free_lists[class];
         if (free_slot != 0) {
             self.free_lists[class] = self.memory[free_slot];
@@ -71,20 +69,19 @@ pub const Heap = struct {
     }
 
     pub fn allocate0(self: *Heap, comptime T: type, value: T) ValueError!Address {
-        comptime std.debug.assert(@sizeOf(T) <= Sizes[0]);
         const slot = try self.allocateClass(0);
         const ptr: *T = @ptrCast(&self.memory[slot]);
         ptr.* = value;
         return slot;
     }
 
-    pub inline fn allocate(self: *Heap, size: usize) ValueError!Allocation {
+    pub fn allocate(self: *Heap, size: usize) ValueError!Allocation {
         if (size > SmallObjectLimit) @panic("large objects not supported");
         const class = sizeClass(size);
         return Allocation{ .slot = try self.allocateClass(class), .class = class };
     }
 
-    pub inline fn reallocate(self: *Heap, slot: Address, class: SizeClass, new_size: usize) ValueError!Allocation {
+    pub fn reallocate(self: *Heap, slot: Address, class: SizeClass, new_size: usize) ValueError!Allocation {
         if (new_size > SmallObjectLimit) @panic("large objects not supported");
         const new_class = sizeClass(new_size);
         if (class == new_class) return Allocation{ .slot = slot, .class = class };
@@ -101,7 +98,7 @@ pub const Heap = struct {
         return Allocation{ .slot = new_slot, .class = new_class };
     }
 
-    pub inline fn freeClass(self: *Heap, slot: Address, class: SizeClass) void {
+    pub fn freeClass(self: *Heap, slot: Address, class: SizeClass) void {
         self.memory[slot] = self.free_lists[class];
         self.free_lists[class] = slot;
     }

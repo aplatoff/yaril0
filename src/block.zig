@@ -32,25 +32,22 @@ pub fn ArrayOf(comptime T: type) type {
 
         const Offset = std.mem.alignForward(usize, @sizeOf(ArrayHeader), @alignOf(Item));
         const OffsetItems = Offset / @sizeOf(Item);
-        comptime {
-            std.debug.assert(OffsetItems * @sizeOf(Item) == Offset);
-        }
 
         value: Array,
 
-        pub inline fn init(array: Array) Self {
+        pub fn init(array: Array) Self {
             return Self{ .value = array };
         }
 
-        pub inline fn val(self: Self) Array {
+        pub fn val(self: Self) Array {
             return self.value;
         }
 
-        inline fn size(length: usize) usize {
+        fn size(length: usize) usize {
             return Offset + @sizeOf(Item) * length;
         }
 
-        inline fn len(self: Self, hp: *Heap) usize {
+        fn len(self: Self, hp: *Heap) usize {
             const slot = self.value.val();
             const header = hp.slotPtr(*ArrayHeader, slot);
             return @intCast(header.len);
@@ -81,12 +78,7 @@ pub fn ArrayOf(comptime T: type) type {
             return init(Array.init(slot));
         }
 
-        pub inline fn append(
-            self: *const Self,
-            hp: *Heap,
-            values: []const Item,
-            alignment: usize,
-        ) ValueError!AppendResult {
+        pub inline fn append(self: *const Self, hp: *Heap, values: []const Item, alignment: usize) ValueError!AppendResult {
             const slot = self.value.val();
             const header = hp.slotPtr(*ArrayHeader, slot);
             if (!header.mutable) return ValueError.ImmutableValue;
@@ -97,7 +89,6 @@ pub fn ArrayOf(comptime T: type) type {
             const padding = cur_size_aligned - cur_size;
             // ensure padding alined with item size
             const padding_items = padding / @sizeOf(Item);
-            std.debug.assert(padding_items * @sizeOf(Item) == padding);
             const pos = length + padding_items;
             const new_size = cur_size_aligned + @sizeOf(Item) * values.len;
 
@@ -121,7 +112,7 @@ pub fn ArrayOf(comptime T: type) type {
             }
         }
 
-        pub inline fn appendItem(self: *const Self, hp: *Heap, item: Item) ValueError!AppendResult {
+        pub fn appendItem(self: *const Self, hp: *Heap, item: Item) ValueError!AppendResult {
             return self.append(hp, &[_]Item{item}, T.Align);
         }
 
@@ -156,16 +147,16 @@ pub const BlockIterator = struct {
         };
     }
 
-    pub inline fn next(self: *BlockIterator) bool {
+    pub fn next(self: *BlockIterator) bool {
         self.pos += 1;
         return self.pos <= self.offsets.len;
     }
 
-    pub inline fn kind(self: BlockIterator) ValueKind {
+    pub fn kind(self: BlockIterator) ValueKind {
         return self.offsets[self.pos - 1].data.type;
     }
 
-    pub inline fn value(self: BlockIterator) *const u8 {
+    pub fn value(self: BlockIterator) *const u8 {
         const offset = self.offsets[self.pos - 1].data.offset;
         return &self.values[offset];
     }
@@ -177,19 +168,15 @@ const BlockHeader = struct {
 }; // do not use packed, it will cause alignment issue
 
 pub const BlockType = struct {
-    comptime {
-        std.debug.assert(@sizeOf(BlockHeader) == 8);
-    }
-
     const Self = @This();
 
     value: Block,
 
-    pub inline fn init(block: Block) Self {
+    pub fn init(block: Block) Self {
         return Self{ .value = block };
     }
 
-    pub inline fn val(self: Self) Block {
+    pub fn val(self: Self) Block {
         return self.value;
     }
 
@@ -217,7 +204,7 @@ pub const BlockType = struct {
         if (offsets_append.new_array) |array| header.offsets = array;
     }
 
-    pub inline fn appendItem(self: *const BlockType, hp: *Heap, comptime T: type, item: T.Type) ValueError!void {
+    pub fn appendItem(self: *const BlockType, hp: *Heap, comptime T: type, item: T.Type) ValueError!void {
         const bytes = std.mem.toBytes(item);
         return self.append(hp, T.Kind, &bytes, @alignOf(T.Type));
     }

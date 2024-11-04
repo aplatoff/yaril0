@@ -18,13 +18,13 @@ pub fn Type(comptime kind: ValueKind, comptime T: type) type {
 
         value: T,
 
-        pub inline fn init(value: T) Self {
+        pub fn init(value: T) Self {
             return Self{
                 .value = value,
             };
         }
 
-        pub inline fn val(self: Self) T {
+        pub fn val(self: Self) T {
             return self.value;
         }
     };

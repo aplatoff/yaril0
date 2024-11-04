@@ -24,19 +24,15 @@ const LinearContextHeader = struct {
 };
 
 pub const LinearContext = struct {
-    comptime {
-        std.debug.assert(@sizeOf(LinearContextHeader) == 8);
-    }
-
     const Self = @This();
 
     context: Context,
 
-    pub inline fn init(context: Context) Self {
+    pub fn init(context: Context) Self {
         return Self{ .context = context };
     }
 
-    pub inline fn val(self: Self) Context {
+    pub fn val(self: Self) Context {
         return self.context;
     }
 
